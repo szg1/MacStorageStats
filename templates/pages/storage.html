@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storage Statistics</title>
+    <!-- Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for a macOS-like feel */
+        body {
+            font-family: 'Inter', sans-serif; /* Using Inter font */
+            background-color: #f0f2f5; /* Light grey background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        /* Ensure the app container is responsive and centered */
+        .app-container {
+            max-width: 500px; /* Max width for a compact look */
+            width: 100%;
+            background-color: #ffffff;
+            border-radius: 12px; /* Rounded corners */
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+            padding: 24px;
+            box-sizing: border-box;
+        }
+
+        .progress-bar-container {
+            height: 12px;
+            background-color: #e0e0e0;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background-color: #007aff; /* macOS blue */
+            border-radius: 6px;
+            transition: width 0.5s ease-in-out; /* Smooth transition for width changes */
+        }
+
+        .message-box {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #333;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+
+        .message-box.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <h1 class="text-2xl font-semibold text-gray-800 mb-6 text-center">Storage Statistics</h1>
+
+        <div class="mb-4">
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-gray-600">Volume:</span>
+                <span id="volumeLabel" class="font-medium text-gray-800"></span>
+            </div>
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-gray-600">Total Storage:</span>
+                <span id="totalStorage" class="font-medium text-gray-800"></span>
+            </div>
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-gray-600">Used Storage:</span>
+                <span id="usedStorage" class="font-medium text-gray-800"></span>
+            </div>
+            <div class="flex justify-between items-center mb-4">
+                <span class="text-gray-600">Available Storage:</span>
+                <span id="availableStorage" class="font-medium text-gray-800"></span>
+            </div>
+        </div>
+
+        <div class="progress-bar-container mb-6">
+            <div id="progressBar" class="progress-bar" style="width: 0%;"></div>
+        </div>
+
+        <div id="categorizedUsageContainer" class="mb-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Categorized Usage:</h2>
+            <p class="text-gray-500 text-sm">Loading detailed breakdown...</p>
+            <!-- Categories will be dynamically inserted here -->
+        </div>
+
+            <!-- Categories will be dynamically inserted here -->
+        </div>
+    </div>
+
+    <div id="messageBox" class="message-box"></div>
+
+    <script>
+    // Format bytes into a human-readable format (GB, TB)
+    function formatBytes(bytes, decimals = 2) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    // Temporary message box
+    function showMessage(message, duration = 3000) {
+        const messageBox = document.getElementById('messageBox');
+        messageBox.textContent = message;
+        messageBox.classList.add('show');
+        setTimeout(() => messageBox.classList.remove('show'), duration);
+    }
+
+    async function fetchBasicStats() {
+        const response = await fetch('http://localhost:4637/storage_stats/basic');
+        if (!response.ok) throw new Error(`Basic stats fetch failed: ${response.status}`);
+        return response.json();
+    }
+
+    async function fetchCategorizedStats() {
+        const response = await fetch('http://localhost:4637/storage_stats/categorized');
+        if (!response.ok) throw new Error(`Categorized stats fetch failed: ${response.status}`);
+        return response.json();
+    }
+
+    async function updateBasicStats() {
+    try {
+        const response = await fetch('http://localhost:4637/storage_stats/basic');
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const data = await response.json();
+
+        const { totalBytes, usedBytes, availableBytes, volumeLabel = "Unknown Volume" } = data;
+        const usedPercent = (usedBytes / totalBytes) * 100;
+
+        document.getElementById('volumeLabel').textContent = volumeLabel;
+        document.getElementById('totalStorage').textContent = formatBytes(totalBytes);
+        document.getElementById('usedStorage').textContent = formatBytes(usedBytes);
+        document.getElementById('availableStorage').textContent = formatBytes(availableBytes);
+        document.getElementById('progressBar').style.width = `${usedPercent}%`;
+
+    } catch (error) {
+        console.error('Basic stats fetch failed:', error);
+        showMessage('Failed to fetch basic storage stats.');
+    }
+}
+
+async function updateDetailedStats() {
+    try {
+        const response = await fetch('http://localhost:4637/storage_stats/categorized');
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const data = await response.json();
+        const categorizedUsage = data.categorizedUsage || {};
+
+        const categorizedContainer = document.getElementById('categorizedUsageContainer');
+        let categoriesHtml = '';
+
+        if (Object.keys(categorizedUsage).length > 0) {
+            for (const category in categorizedUsage) {
+                const bytes = categorizedUsage[category];
+                categoriesHtml += `
+                    <div class="flex justify-between items-center mb-2 text-sm">
+                        <span class="text-gray-700">${category}:</span>
+                        <span class="font-medium text-gray-800">${formatBytes(bytes)}</span>
+                    </div>
+                `;
+            }
+        } else {
+            categoriesHtml = '<p class="text-gray-500 text-sm">No categorized data available.</p>';
+        }
+
+        categorizedContainer.innerHTML = `<h2 class="text-lg font-semibold text-gray-800 mb-4">Categorized Usage:</h2>` + categoriesHtml;
+
+    } catch (error) {
+        console.error('Detailed stats fetch failed:', error);
+        const categorizedContainer = document.getElementById('categorizedUsageContainer');
+        categorizedContainer.innerHTML = `<h2 class="text-lg font-semibold text-gray-800 mb-4">Categorized Usage:</h2><p class="text-gray-500 text-sm">Failed to load categorized data.</p>`;
+    }
+}
+
+
+    window.onload = function() {
+    updateBasicStats();          // Fast load
+    updateDetailedStats();       // Async
+};
+
+</script>
+
+</body>
+</html>
+
